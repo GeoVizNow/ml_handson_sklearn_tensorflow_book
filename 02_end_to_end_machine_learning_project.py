@@ -71,7 +71,7 @@ def load_housing_data(housing_path=HOUSING_PATH):
 
 # %%
 
-housing = load_housing_data()
+housing = load_housing_data()  # housing data, including labels?
 housing.head()
 
 # %%    
@@ -84,8 +84,10 @@ housing["ocean_proximity"].value_counts()
 housing.describe()
 # %%
 import os
-dir_path = os.path.dirname(os.path.abspath(__file__))
-cwd = os.getcwd()
+try:
+    dir_path = os.path.dirname(os.path.abspath(__file__))
+except:
+    dir_path = os.getcwd()
 print(dir_path)
 # %%
 import matplotlib.pyplot as plt
@@ -105,13 +107,13 @@ import numpy as np
 
 # For illustration only. Sklearn has train_test_split()
 def split_train_test(data, test_ratio):
-    shuffled_indices = np.random.permutation(len(data))
-    test_set_size = int(len(data) * test_ratio)
-    test_indices = shuffled_indices[:test_set_size]
+    shuffled_indices = np.random.permutation(len(data))  # 1 d np array of indices in random order
+    test_set_size = int(len(data) * test_ratio)  # integer value indicating number of indeices in test set
+    test_indices = shuffled_indices[:test_set_size]  # 1d array of test indices
     train_indices = shuffled_indices[test_set_size:]
     return data.iloc[train_indices], data.iloc[test_indices]
 
-# %%
+# %% using the above defined function
     
 train_set, test_set = split_train_test(housing, 0.2)
 print(len(train_set), "train +", len(test_set), "test")
@@ -123,7 +125,7 @@ def test_set_check(identifier, test_ratio):
     return crc32(np.int64(identifier)) & 0xffffffff < test_ratio * 2**32
 
 def split_train_test_by_id(data, test_ratio, id_column):
-    ids = data[id_column]
+    ids = data[id_column]  # pandas series
     in_test_set = ids.apply(lambda id_: test_set_check(id_, test_ratio))
     return data.loc[~in_test_set], data.loc[in_test_set]
 
@@ -151,26 +153,58 @@ train_set, test_set = train_test_split(housing, test_size=0.2, random_state=42)
 test_set.head()
 
 # %%
-
 housing["median_income"].hist()
 # %%
 # Divide by 1.5 to limit the number of income categories
 housing["income_cat"] = np.ceil(housing["median_income"] / 1.5)
 # Label those above 5 as 5
 housing["income_cat"].where(housing["income_cat"] < 5, 5.0, inplace=True)
-
 housing["income_cat"].hist()
 
 # %%
-from sklearn.model_selection import StratifiedShuffleSplit
+housing['id'] =  (housing['longitude']
+    .multiply(10.0)
+    .apply(np.floor)
+    )
 
+## %%
+#        housing
+#        .pipe(lambda df: df['longitude'] * 10.0)
+#        .pipe(lambda df: df['longitude'].int)
+#        )
+#
+    #.pipe(np.int) #  + housing["latitude"]
+
+
+
+# %%  # TODO(hali) KEY # make split on wellbore and cat sw depth and cat long and cat lat 
+# [0,500,1500,1000,1500,2000,2500,3000,3500,4000] and 
+from sklearn.model_selection import StratifiedShuffleSplit, GroupShuffleSplit
+# %% see https://github.com/scikit-learn/scikit-learn/issues/9193
+housing['stratify_group'] = housing[["income_cat", 'id']].apply(lambda x: '_'.join(x.astype(int).abs().astype(str)), axis=1)
+# %%
+split_gp = GroupShuffleSplit(n_splits=1,test_size=0.5, random_state=42)
+for train_inds, test_inds in split_gp.split(X=housing, y=None, groups=housing['stratify_group']):
+    strat_train_set_gp = housing.loc[train_inds]
+    strat_test_set_gp = housing.loc[test_inds]
+#X_train, X_test, y_train, y_test = X[train_inds], X[test_inds], y[train_inds], y[test_inds]
+# %%
+#strat_train_set_gp2, strat_test_set_gp2 = GroupShuffleSplit(
+#        n_splits=1,test_size=0.5, random_state=42).split(
+#                X=housing, y=None, groups=housing['stratify_group']).next()
+    
+
+# %%
 split = StratifiedShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
-for train_index, test_index in split.split(housing, housing["income_cat"]):
+for train_index, test_index in split.split(housing, housing["income_cat"], housing['id']):
+    print(str(len(train_index)) + '_' + str(len(test_index)) + '\n')
     strat_train_set = housing.loc[train_index]
     strat_test_set = housing.loc[test_index]
     
 # %%
 strat_test_set["income_cat"].value_counts() / len(strat_test_set)
+# %%
+strat_test_set["id"].value_counts() / len(strat_test_set)
 
 # %%
 def income_cat_proportions(data):
